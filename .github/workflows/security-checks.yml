@@ -1,0 +1,56 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main, security-hardening]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for likely committed secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE --exclude-dir=.git --exclude='*.map' \
+            '(BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{20,})' .; then
+            echo 'Potential secret material found in tracked files.'
+            exit 1
+          fi
+
+      - name: Check for insecure HTML patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nEi --exclude-dir=.git '<script[^>]+src=["'"']http://' index.html; then
+            echo 'HTTP script source detected.'
+            exit 1
+          fi
+
+      - name: Check security helper is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s security/client-security.js
+          grep -q 'validateCelebration' security/client-security.js
+          grep -q 'allowRate' security/client-security.js
+
+      - name: Validate HTML structure basics
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '<html' index.html
+          grep -q '<head>' index.html
+          grep -q '</head>' index.html
+          grep -q '<body' index.html
+          grep -q '</body>' index.html
+          grep -q "Content-Security-Policy" index.html
